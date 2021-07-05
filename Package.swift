@@ -20,6 +20,7 @@ let package = Package(
     .package(url: "https://github.com/pointfreeco/combine-schedulers", from: "0.4.0"),
     .package(url: "https://github.com/pointfreeco/swift-case-paths", from: "0.1.3"),
     .package(url: "https://github.com/pointfreeco/xctest-dynamic-overlay", from: "0.1.0"),
+    .package(url: "https://github.com/mxcl/PromiseKit", from: "7.0.0-rc2")
   ],
   targets: [
     .target(
@@ -28,6 +29,7 @@ let package = Package(
         "CasePaths",
         "CombineSchedulers",
         "XCTestDynamicOverlay",
+        "PromiseKit"
       ]
     ),
     .testTarget(
