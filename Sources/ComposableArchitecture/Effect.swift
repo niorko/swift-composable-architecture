@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import PromiseKit
 
@@ -15,14 +14,14 @@ import PromiseKit
 /// constructing some common types of effects.
 public struct Effect<Output> {
   
-  private let promises: [CancellablePromise<Output>]
+  private let guarantees: [Guarantee<Output>]
 
-  private init(_ promises: [CancellablePromise<Output>]) {
-    self.promises = promises
+  private init(_ guarantees: [Guarantee<Output>]) {
+    self.guarantees = guarantees
   }
   
-  private init(resolver: (Resolver<Output>) throws -> Void) {
-    self.promises = [CancellablePromise<Output>(resolver: resolver)]
+  private init(resolver: @escaping ((Output) -> Void) -> Void) {
+    self.guarantees = [Guarantee<Output>(resolver: resolver)]
   }
   
   /// Initializes an effect that wraps a publisher. Each emission of the wrapped publisher will be
@@ -47,22 +46,15 @@ public struct Effect<Output> {
   /// ```
   ///
   /// - Parameter publisher: A publisher.
-  public init<T: Thenable>(_ thenable: T) where T.T == Output {
-    self.promises = [CancellablePromise(thenable)]
+  public init(_ guarantee: Guarantee<Output>) {
+    self.guarantees = [guarantee]
   }
 
   /// Initializes an effect that immediately emits the value passed in.
   ///
   /// - Parameter value: The value that is immediately emitted by the effect.
   public init(value: Output) {
-    self.promises = [CancellablePromise<Output>(Promise.value(value))]
-  }
-
-  /// Initializes an effect that immediately fails with the error passed in.
-  ///
-  /// - Parameter error: The error that is immediately emitted by the effect.
-  public init(error: Error) {
-    self.promises = [CancellablePromise(error: error)]
+    self.guarantees = [Guarantee.value(value)]
   }
 
   /// An effect that does nothing and completes immediately. Useful for situations where you must
@@ -96,15 +88,10 @@ public struct Effect<Output> {
   ///
   /// - Parameter attemptToFulfill: A closure encapsulating some work to execute in the real world.
   /// - Returns: An effect.
-  public static func result(_ attemptToFulfill: @escaping () -> Swift.Result<Output, Error>) -> Self {
+  public static func result(_ attemptToFulfill: @escaping () -> Output) -> Self {
     Self { resolver in
       let result = attemptToFulfill()
-      do {
-        let value = try result.get()
-        resolver.fulfill(value)
-      } catch {
-        resolver.reject(error)
-      }
+      resolver(result)
     }
   }
 
@@ -137,7 +124,7 @@ public struct Effect<Output> {
   public static func concatenate<C: Collection>(
     _ effects: C
   ) -> Effect where C.Element == Effect {
-    let allPromises = effects.flatMap(\.promises)
+    let allPromises = effects.flatMap(\.guarantees)
     return Effect(allPromises)
   }
 
@@ -158,7 +145,7 @@ public struct Effect<Output> {
   /// - Parameter effects: A sequence of effects.
   /// - Returns: A new effect
   public static func merge<S: Sequence>(_ effects: S) -> Effect where S.Element == Effect {
-    Effect(effects.flatMap(\.promises))
+    Effect(effects.flatMap(\.guarantees))
   }
 
   /// Creates an effect that executes some work in the real world that doesn't need to feed data
@@ -168,7 +155,7 @@ public struct Effect<Output> {
   /// - Returns: An effect.
   public static func fireAndForget(_ work: @escaping () -> Void) -> Effect {
     Effect<Void>
-      .catching(work)
+      .result(work)
       .flatMap { _ in .none }
   }
 
@@ -178,56 +165,39 @@ public struct Effect<Output> {
   /// - Returns: A publisher that uses the provided closure to map elements from the upstream effect
   ///   to new elements that it then publishes.
   public func map<U>(_ transform: @escaping (Output) -> U) -> Effect<U> {
-    let newPromises = promises.map { $0.map(transform) }
+    let newPromises = guarantees.map { $0.map(transform) }
     return Effect<U>.init(newPromises)
   }
   
   public func flatMap<U>(_ transform: @escaping (Output) -> Effect<U>) -> Effect<U> {
-    let newPromises: [CancellablePromise<U>] = promises.map { promise -> CancellablePromise<U> in
-      return promise.then { output -> CancellablePromise<U> in
-        let newEffect: Effect<U> = transform(output)
-        return newEffect.promises.first!
-      }
+    let mappedGuarantees = guarantees.flatMap { guarantee -> [Guarantee<U>] in
+      guarantee.map(transform).map(\.guarantees).wait()
     }
-    return Effect<U>(newPromises)
-  }
-
-  /// Initializes an effect that lazily executes some work in the real world and synchronously sends
-  /// that data back into the store.
-  ///
-  /// For example, to load a user from some JSON on the disk, one can wrap that work in an effect:
-  ///
-  /// ```swift
-  /// Effect<User, Error>.catching {
-  ///   let fileUrl = URL(
-  ///     fileURLWithPath: NSSearchPathForDirectoriesInDomains(
-  ///       .documentDirectory, .userDomainMask, true
-  ///     )[0]
-  ///   )
-  ///   .appendingPathComponent("user.json")
-  ///
-  ///   let data = try Data(contentsOf: fileUrl)
-  ///   return try JSONDecoder().decode(User.self, from: $0)
-  /// }
-  /// ```
-  ///
-  /// - Parameter work: A closure encapsulating some work to execute in the real world.
-  /// - Returns: An effect.
-  public static func catching(_ work: @escaping () throws -> Output) -> Self {
-    Self.init { resolver in
-      do {
-        let value = try work()
-        resolver.fulfill(value)
-      } catch {
-        resolver.reject(error)
-      }
-    }
+    return Effect<U>(mappedGuarantees)
   }
 }
 
-extension Thenable {
+extension Guarantee {
   /// DOC
   public func eraseToEffect() -> Effect<T> {
     Effect<T>(self)
+  }
+}
+
+extension CatchMixin {
+  /// DOC
+  public func eraseToEffect(recover handler: @escaping (Error) -> T) -> Effect<T> {
+    Effect<T>(recover { error in
+      Guarantee.value(handler(error))
+    })
+  }
+}
+
+extension CancellablePromise {
+  /// DOC
+  public func eraseToEffect(recover handler: @escaping (Error) -> T) -> Effect<T> {
+    Effect<T>(promise.recover { error in
+      Guarantee.value(handler(error))
+    })
   }
 }
