@@ -1,5 +1,4 @@
 import CasePaths
-import Combine
 
 /// A reducer describes how to evolve the current state of an application to the next state, given
 /// an action, and describes what ``Effect``s should be executed later by the store, if any.
@@ -18,7 +17,7 @@ import Combine
 ///   must be on the main thread. You can use the `Publisher` method `receive(on:)` for make the
 ///   effect output its values on the thread of your choice.
 public struct Reducer<State, Action, Environment> {
-  private let reducer: (inout State, Action, Environment) -> Effect<Action, Never>
+  private let reducer: (inout State, Action, Environment) -> Effect<Action>
 
   /// Initializes a reducer from a simple reducer function signature.
   ///
@@ -49,7 +48,7 @@ public struct Reducer<State, Action, Environment> {
   ///
   /// - Parameter reducer: A function signature that takes state, action and
   ///   environment.
-  public init(_ reducer: @escaping (inout State, Action, Environment) -> Effect<Action, Never>) {
+  public init(_ reducer: @escaping (inout State, Action, Environment) -> Effect<Action>) {
     self.reducer = reducer
   }
 
@@ -979,7 +978,7 @@ public struct Reducer<State, Action, Environment> {
     _ state: inout State,
     _ action: Action,
     _ environment: Environment
-  ) -> Effect<Action, Never> {
+  ) -> Effect<Action> {
     self.reducer(&state, action, environment)
   }
 
@@ -987,7 +986,7 @@ public struct Reducer<State, Action, Environment> {
     _ state: inout State,
     _ action: Action,
     _ environment: Environment
-  ) -> Effect<Action, Never> {
+  ) -> Effect<Action> {
     self.reducer(&state, action, environment)
   }
 }
