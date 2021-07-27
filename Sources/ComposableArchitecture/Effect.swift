@@ -175,6 +175,13 @@ public struct Effect<Output> {
     }
     return Effect<U>(mappedGuarantees)
   }
+  
+  public func sink(resultHandler: (Output) -> Void) {
+    var guarantees = self.guarantees
+    while !guarantees.isEmpty {
+      #error("Implement sink")
+    }
+  }
 }
 
 extension Guarantee {
