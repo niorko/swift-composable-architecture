@@ -1,4 +1,8 @@
 import Combine
+import Dispatch
+import PromiseKit
+
+
 
 extension Effect {
   /// Returns an effect that will be executed after given `dueTime`.
@@ -16,15 +20,14 @@ extension Effect {
   ///   - scheduler: The scheduler you want to deliver the defer output to.
   ///   - options: Scheduler options that customize the effect's delivery of elements.
   /// - Returns: An effect that will be executed after `dueTime`
-  public func deferred<S: Scheduler>(
-    for dueTime: S.SchedulerTimeType.Stride,
-    scheduler: S,
-    options: S.SchedulerOptions? = nil
+  public func deferred<S: DeferredDispatcher>(
+    for dueTime: DispatchTimeInterval,
+    scheduler: S
   ) -> Effect {
-    Just(())
-      .setFailureType(to: Failure.self)
-      .delay(for: dueTime, scheduler: scheduler, options: options)
-      .flatMap { self }
-      .eraseToEffect()
+    Guarantee<Output> { resolver in
+      scheduler.dispatchAfter(deadline: .now() + dueTime) {
+        sink(resultHandler: resolver)
+      }
+    }.eraseToEffect()
   }
 }
