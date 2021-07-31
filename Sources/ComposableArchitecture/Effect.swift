@@ -176,11 +176,20 @@ public struct Effect<Output> {
     return Effect<U>(mappedGuarantees)
   }
   
-  public func sink(resultHandler: (Output) -> Void) {
-    var guarantees = self.guarantees
-    while !guarantees.isEmpty {
-      #error("Implement sink")
+  public func sink(resultHandler: @escaping (Output) -> Void) {
+    guard !guarantees.isEmpty else { return }
+      
+    var handle: ((_ i: Int) -> Void)!
+    handle = { i in
+      guard i < guarantees.count else { return }
+      firstly {
+        guarantees[i]
+      }.done { output in
+        resultHandler(output)
+        handle(i+1)
+      }
     }
+    handle(0)
   }
 }
 
